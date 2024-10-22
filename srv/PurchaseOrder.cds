@@ -38,7 +38,7 @@ service capm {
     };
 
     entity POSubcontractingComponent as projection on external.POSubcontractingComponent {
-        PurchaseOrder,
+        key PurchaseOrder,
         PurchaseOrderItem,
         ScheduleLine,
         ReservationItem,
