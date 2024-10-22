@@ -101,6 +101,7 @@
           "name": "sap.fe.templates.ListReport",
           "options": {
             "settings": {
+              "initialLoad": "Enabled",
               "contextPath": "/Order",
               "variantManagement": "Page",
               "navigation": {
