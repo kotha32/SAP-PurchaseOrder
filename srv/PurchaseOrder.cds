@@ -2,7 +2,10 @@ using { CE_PURCHASEORDER_0001 as external } from './external/CE_PURCHASEORDER_00
 
 service capm {
 
-    entity PurchaseOrder as projection on external.PurchaseOrder;
+    entity Order as projection on external.PurchaseOrder  actions {
+        action Data() returns String;
+    };
+    @cds.redirection.target
 
     entity PurchaseOrderItem as projection on external.PurchaseOrderItem;
 
