@@ -3,90 +3,143 @@ const cds = require('@sap/cds');
 module.exports = cds.service.impl(async function () {
     const external = await cds.connect.to('CE_PURCHASEORDER_0001');
 
-    this.on('READ', 'Order', async (req) => {
-        try {
-            console.log('Fetching data from the external service...');
-            const externalData = await external.run(req.query);
-            console.log('Data from external service:', externalData);
-            return externalData;
-        } catch (error) {
-            console.error('Error fetching data from the external service:', error);
-            req.reject(500, 'Failed to fetch data from the external service.');
-        }
+    this.on('READ', 'PurchaseOrder', async (req) => {
+        // Select only the fields defined in service.cds for PurchaseOrder
+        const purchaseOrders = await external.run(
+            SELECT.from('PurchaseOrder')
+                .columns(
+                    'PurchaseOrder', 
+                    'PurchasingDocumentOrigin', 
+                    'PurchaseOrderDate', 
+                    'Language', 
+                    'CompanyCode', 
+                    'PurchasingOrganization', 
+                    'Supplier', 
+                    'DocumentCurrency', 
+                    'TaxReturnCountry', 
+                    'VATRegistrationCountry'
+                )
+        );
+
+        const enrichedPurchaseOrders = await Promise.all(
+            purchaseOrders.map(async (purchaseOrder) => {
+                const purchaseOrderItems = await external.run(
+                    SELECT.from('PurchaseOrderItem')
+                        .columns(
+                            'PurchaseOrder', 
+                            'PurchaseOrderItem', 
+                            'PurchaseOrderCategory', 
+                            'DocumentCurrency', 
+                            'MaterialGroup', 
+                            'Material', 
+                            'MaterialType', 
+                            'ManufacturerMaterial', 
+                            'PurchaseOrderItemText', 
+                            'ProductTypeCode', 
+                            'CompanyCode', 
+                            'Plant', 
+                            'PurchaseOrderQuantityUnit', 
+                            'BaseUnit', 
+                            'OrderPriceUnit', 
+                            'NetAmount', 
+                            'GrossAmount', 
+                            'OrderQuantity', 
+                            'NetPriceAmount'
+                        )
+                        .where({ PurchaseOrder: purchaseOrder.PurchaseOrder })
+                );
+
+                const enrichedItems = await Promise.all(
+                    purchaseOrderItems.map(async (item) => {
+                        const [notes, accountAssignments, pricingElements, itemNotes] = await Promise.all([
+                            external.run(
+                                SELECT.from('PurchaseOrderNote')
+                                    .columns('PurchaseOrder', 'TextObjectType', 'Language', 'PlainLongText')
+                                    .where({ PurchaseOrder: item.PurchaseOrder })
+                            ),
+                            external.run(
+                                SELECT.from('PurchaseOrderAccountAssignment')
+                                    .columns(
+                                        'PurchaseOrder', 
+                                        'PurchaseOrderItem', 
+                                        'AccountAssignmentNumber', 
+                                        'CostCenter', 
+                                        'OrderQuantityUnit', 
+                                        'Quantity', 
+                                        'MultipleAcctAssgmtDistrPercent', 
+                                        'DocumentCurrency', 
+                                        'IsDeleted', 
+                                        'GLAccount', 
+                                        'ControllingArea', 
+                                        'ProfitCenter', 
+                                        'FunctionalArea', 
+                                        'IsFinallyInvoiced', 
+                                        'SettlementReferenceDate', 
+                                        'EarmarkedFundsDocumentItem', 
+                                        'ValidityDate', 
+                                        'ChartOfAccounts', 
+                                        'CreationDate', 
+                                        'IsAcctLineFinal', 
+                                        'CompanyCode'
+                                    )
+                                    .where({ PurchaseOrder: item.PurchaseOrder, PurchaseOrderItem: item.PurchaseOrderItem })
+                            ),
+                            external.run(
+                                SELECT.from('PurOrderItemPricingElement')
+                                    .columns(
+                                        'PurchaseOrder', 
+                                        'PurchaseOrderItem', 
+                                        'PricingDocument', 
+                                        'PricingDocumentItem', 
+                                        'PricingProcedureStep', 
+                                        'PricingProcedureCounter', 
+                                        'ConditionApplication', 
+                                        'ConditionType', 
+                                        'PriceConditionDeterminationDte', 
+                                        'ConditionCalculationType', 
+                                        'ConditionBaseAmount', 
+                                        'ConditionRateAmount', 
+                                        'ConditionBaseValue', 
+                                        'ConditionCurrency', 
+                                        'ConditionQuantity', 
+                                        'ConditionQuantityUnit', 
+                                        'ConditionCategory', 
+                                        'ConditionOrigin', 
+                                        'ConditionAmount', 
+                                        'TransactionCurrency', 
+                                        'ConditionControl', 
+                                        'ConditionClass', 
+                                        'ConditionTypeName', 
+                                        'ConditionBaseValueUnit', 
+                                        'ConditionRateValueIntlUnit', 
+                                        'ConditionRateValueUnit'
+                                    )
+                                    .where({ PurchaseOrder: item.PurchaseOrder, PurchaseOrderItem: item.PurchaseOrderItem })
+                            ),
+                            external.run(
+                                SELECT.from('PurchaseOrderItemNote')
+                                    .columns('PurchaseOrder', 'PurchaseOrderItem', 'TextObjectType', 'Language', 'PlainLongText', 'PurchaseOrderItemUniqueID')
+                                    .where({ PurchaseOrder: item.PurchaseOrder, PurchaseOrderItem: item.PurchaseOrderItem })
+                            )
+                        ]);
+
+                        return {
+                            ...item,
+                            PurchaseOrderNote: notes,
+                            PurchaseOrderAccountAssignment: accountAssignments,
+                            PurOrderItemPricingElement: pricingElements,
+                            PurchaseOrderItemNote: itemNotes
+                        };
+                    })
+                );
+
+                return {
+                    ...purchaseOrder,
+                    PurchaseOrderItem: enrichedItems
+                };
+            })
+        );
+
+        return enrichedPurchaseOrders;
     });
-
-    this.on('READ', 'PurchaseOrderItem', async (req) => {
-        try {
-            console.log('Fetching data from the external service...');
-            const externalData = await external.run(req.query);
-            console.log('Data from external service:', externalData);
-            return externalData;
-        } catch (error) {
-            console.error('Error fetching data from the external service:', error);
-            req.reject(500, 'Failed to fetch data from the external service.');
-        }
-    });
-
-    this.on('READ', 'POSubcontractingComponent', async (req) => {
-        try {
-            console.log('Fetching data from the external service...');
-            const externalData = await external.run(req.query);
-            console.log('Data from external service:', externalData);
-            return externalData;
-        } catch (error) {
-            console.error('Error fetching data from the external service:', error);
-            req.reject(500, 'Failed to fetch data from the external service.');
-        }
-    });
-
-    this.on('READ', 'PurOrderItemPricingElement', async (req) => {
-        try {
-            console.log('Fetching data from the external service...');
-            const externalData = await external.run(req.query);
-            console.log('Data from external service:', externalData);
-            return externalData;
-        } catch (error) {
-            console.error('Error fetching data from the external service:', error);
-            req.reject(500, 'Failed to fetch data from the external service.');
-        }
-    });
-
-    this.on('READ', 'PurchaseOrderNote', async (req) => {
-        try {
-            console.log('Fetching data from the external service...');
-            const externalData = await external.run(req.query);
-            console.log('Data from external service:', externalData);
-            return externalData;
-        } catch (error) {
-            console.error('Error fetching data from the external service:', error);
-            req.reject(500, 'Failed to fetch data from the external service.');
-        }
-    });
-    
-    this.on('READ', 'PurchaseOrderAccountAssignment', async (req) => {
-        try {
-            console.log('Fetching data from the external service...');
-            const externalData = await external.run(req.query);
-            console.log('Data from external service:', externalData);
-            return externalData;
-        } catch (error) {
-            console.error('Error fetching data from the external service:', error);
-            req.reject(500, 'Failed to fetch data from the external service.');
-        }
-    });
-
-    this.on('READ', 'PurchaseOrderItemNote', async (req) => {
-        try {
-            console.log('Fetching data from the external service...');
-            const externalData = await external.run(req.query);
-            console.log('Data from external service:', externalData);
-            return externalData;
-        } catch (error) {
-            console.error('Error fetching data from the external service:', error);
-            req.reject(500, 'Failed to fetch data from the external service.');
-        }
-    });
-
-
-
 });

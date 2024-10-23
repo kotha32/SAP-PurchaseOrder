@@ -2,7 +2,7 @@ using { CE_PURCHASEORDER_0001 as external } from './external/CE_PURCHASEORDER_00
 
 service capm {
 
-    entity Order as projection on external.PurchaseOrder {
+    entity PurchaseOrder as projection on external.PurchaseOrder {
         PurchaseOrder,
         PurchasingDocumentOrigin,
         PurchaseOrderDate,
