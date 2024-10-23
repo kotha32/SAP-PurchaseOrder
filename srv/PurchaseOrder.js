@@ -2,10 +2,11 @@ const cds = require('@sap/cds');
 const axios = require('axios');
 const { json2xml } = require('xml-js');
 
+// Use the external service as imported from './external/CE_PURCHASEORDER_0001'
 module.exports = cds.service.impl(async function () {
     const external = await cds.connect.to('CE_PURCHASEORDER_0001');
 
-    // READ operation for Orders (projection on PurchaseOrder)
+    // READ operation for PurchaseOrders (projection on PurchaseOrder)
     this.on('READ', 'Order', async (req) => {
         try {
             req.query.SELECT.columns = [
@@ -20,11 +21,11 @@ module.exports = cds.service.impl(async function () {
                 { ref: ['TaxReturnCountry'] },
                 { ref: ['VATRegistrationCountry'] }
             ];
-            const orders = await external.run(req.query);
+            const purchaseOrders = await external.run(req.query);
 
             const enrichedResults = [];
 
-            for (const order of orders) {
+            for (const order of purchaseOrders) {
                 const items = await external.run(
                     SELECT.from('PurchaseOrderItem')
                         .where({ PurchaseOrder: order.PurchaseOrder })
@@ -52,7 +53,7 @@ module.exports = cds.service.impl(async function () {
                 );
 
                 for (const item of items) {
-                    const [pricingElements, itemNotes, accountAssignments] = await Promise.all([
+                    const [pricingElements, itemNotes, scheduleLines, accountAssignments] = await Promise.all([
                         external.run(
                             SELECT.from('PurOrderItemPricingElement')
                                 .where({
@@ -77,6 +78,26 @@ module.exports = cds.service.impl(async function () {
                                 .columns('PurchaseOrder', 'PurchaseOrderItem', 'PlainLongText')
                         ),
                         external.run(
+                            SELECT.from('PurchaseOrderScheduleLine')
+                                .where({
+                                    PurchaseOrder: item.PurchaseOrder,
+                                    PurchaseOrderItem: item.PurchaseOrderItem
+                                })
+                                .columns(
+                                    'PurchaseOrder',
+                                    'PurchaseOrderItem',
+                                    'ScheduleLine',
+                                    'ScheduleLineDeliveryDate',
+                                    'SchedLineStscDeliveryDate',
+                                    'PurchaseOrderQuantityUnit',
+                                    'Currency',
+                                    'PurchaseRequisition',
+                                    'PurchaseRequisitionItem',
+                                    'DelivDateCategory',
+                                    'ScheduleLineOrderDate'
+                                )
+                        ),
+                        external.run(
                             SELECT.from('PurchaseOrderAccountAssignment')
                                 .where({
                                     PurchaseOrder: item.PurchaseOrder,
@@ -94,6 +115,7 @@ module.exports = cds.service.impl(async function () {
 
                     item.PurOrderItemPricingElement = pricingElements;
                     item.PurchaseOrderItemNote = itemNotes;
+                    item.PurchaseOrderScheduleLine = scheduleLines;
                     item.PurchaseOrderAccountAssignment = accountAssignments;
                 }
 
@@ -116,15 +138,15 @@ module.exports = cds.service.impl(async function () {
             const { PurchaseOrder } = req.params[0];
             console.log('Data action triggered for PurchaseOrder:', PurchaseOrder);
 
-            const orderData = await this.run(
+            const purchaseOrderData = await this.run(
                 SELECT.from('Order').where({ PurchaseOrder }).columns('*')
             );
 
-            if (!orderData.length) {
-                return req.error(404, 'Order not found');
+            if (!purchaseOrderData.length) {
+                return req.error(404, 'Purchase Order not found');
             }
 
-            const wrappedData = { Orders: orderData };
+            const wrappedData = { Orders: purchaseOrderData };
             const xmlData = json2xml(wrappedData, { compact: true, spaces: 4 });
             console.log('Generated XML:', xmlData);
 
